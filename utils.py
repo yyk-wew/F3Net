@@ -1,9 +1,10 @@
 import torch
+import os
 import numpy as np
 import random
-from networks.resnet import resnet50
+from torch.utils import data
+from torchvision import transforms as trans
 from sklearn.metrics import average_precision_score, precision_recall_curve, accuracy_score
-from data import create_dataloader
 from sklearn.metrics import roc_curve
 from sklearn.metrics import auc as cal_auc
 from PIL import Image
@@ -12,11 +13,11 @@ class FFDataset(data.Dataset):
 
     def __init__(self, dataset_root, frame_num=300, size=299):
         self.data_root = dataset_root
+        self.frame_num = frame_num
         self.train_list = self.collect_image(self.data_root)
         self.transform = trans.ToTensor()
         self.max_val = 1.
         self.min_val = -1.
-        self.frame_num = frame_num
         self.size = size
 
     def collect_image(self, root):
@@ -69,7 +70,7 @@ def get_dataset(name = 'train', size=299, root='/data/yike/FF++_std_c40_300frame
 def evaluate(model, data_path, mode='valid'):
     root= data_path
     origin_root = root
-    root = os.path.join(root, mode)
+    root = os.path.join(data_path, mode)
     real_root = os.path.join(root,'real')
     dataset_real = FFDataset(dataset_root=real_root, size=299, frame_num=50)
     dataset_fake, _ = get_dataset(name=mode, root=origin_root, size=299, frame_num=50)

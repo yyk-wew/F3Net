@@ -13,10 +13,10 @@ def initModel(mod, gpu_ids):
     mod = nn.DataParallel(mod, gpu_ids)
     return mod
 
-class Trainer(BaseModel): 
-    def __init__(self, gpu_ids):
+class Trainer(): 
+    def __init__(self, gpu_ids, mode):
         self.device = torch.device('cuda:{}'.format(gpu_ids[0])) if gpu_ids else torch.device('cpu')
-        self.model = F3Net(mode='Mix', device=self.device)
+        self.model = F3Net(mode=mode, device=self.device)
         self.model.load_pretrained_xception()
         self.model = initModel(self.model, gpu_ids)
         self.loss_fn = nn.BCEWithLogitsLoss()

@@ -5,10 +5,9 @@ import sys
 import time
 import torch
 import torch.nn
-import argparse
 
 from utils import evaluate, get_dataset, FFDataset
-from networks.trainer_f3net import Trainer
+from trainer import Trainer
 import numpy as np
 import random
 
@@ -18,10 +17,11 @@ batch_size = 12
 gpu_ids = [*range(osenvs)]
 max_epoch = 2
 loss_freq = 40
+mode = 'FAD' # ['FAD', 'LFS', 'Both', 'Mix']
 
 
 if __name__ == '__main__':
-    dataset = FFDataset(dataset_root=os.path.join(dataset, 'real'), size=299, frame_num=300)
+    dataset = FFDataset(dataset_root=os.path.join(dataset_path, 'train', 'real'), size=299, frame_num=300)
     dataloader_real = torch.utils.data.DataLoader(
         dataset=dataset,
         batch_size=batch_size // 2,
@@ -39,7 +39,7 @@ if __name__ == '__main__':
     )
     
 
-    model = Trainer(gpu_ids)
+    model = Trainer(gpu_ids, mode)
     model.total_steps = 0
     epoch = 0
     
@@ -65,9 +65,11 @@ if __name__ == '__main__':
             
             if data_real.shape[0] != data_fake.shape[0]:
                 continue
+
+            bz = data_real.shape[0]
             
             data = torch.cat([data_real,data_fake],dim=0)
-            label = torch.cat([torch.zeros(bz).unsqueeze(dim=0),torch.ones(bz1).unsqueeze(dim=0)],dim=1).squeeze(dim=0)
+            label = torch.cat([torch.zeros(bz).unsqueeze(dim=0),torch.ones(bz).unsqueeze(dim=0)],dim=1).squeeze(dim=0)
 
             model.set_input(data,label)
             loss = model.optimize_weight()
