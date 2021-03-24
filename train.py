@@ -13,6 +13,7 @@ import random
 
 # config
 dataset_path = '/data/yike/FF++_std_c40_300frames/'
+pretrained_path = 'pretrained/xception-b5690688.pth'
 batch_size = 12
 gpu_ids = [*range(osenvs)]
 max_epoch = 2
@@ -39,7 +40,7 @@ if __name__ == '__main__':
     )
     
 
-    model = Trainer(gpu_ids, mode)
+    model = Trainer(gpu_ids, mode, pretrained_path)
     model.total_steps = 0
     epoch = 0
     

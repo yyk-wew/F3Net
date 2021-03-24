@@ -1,4 +1,3 @@
-import functools
 import torch
 import torch.nn as nn
 from torch.nn import parameter
@@ -14,10 +13,10 @@ def initModel(mod, gpu_ids):
     return mod
 
 class Trainer(): 
-    def __init__(self, gpu_ids, mode):
+    def __init__(self, gpu_ids, mode, pretrained_path):
         self.device = torch.device('cuda:{}'.format(gpu_ids[0])) if gpu_ids else torch.device('cpu')
         self.model = F3Net(mode=mode, device=self.device)
-        self.model.load_pretrained_xception()
+        self.model.load_pretrained_xception(pretrained_path=pretrained_path)
         self.model = initModel(self.model, gpu_ids)
         self.loss_fn = nn.BCEWithLogitsLoss()
         self.optimizer = torch.optim.SGD(filter(lambda p: p.requires_grad, self.model.parameters()),
