@@ -81,7 +81,7 @@ if __name__ == '__main__':
             if i % int(len_dataloader / 10) == 0:
                 model.eval()
                 auc, r_acc, f_acc = evaluate(model, data_path, mode='valid')
-                logger.debug(f'(Val @ epoch {epoch}) auc: {auc}, r_acc: {r_acc}, f_acc:{f_acc}')
+                print(f'(Val @ epoch {epoch}) auc: {auc}, r_acc: {r_acc}, f_acc:{f_acc}')
                 model.train()
         epoch = epoch + 1
 
