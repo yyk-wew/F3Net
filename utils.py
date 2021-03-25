@@ -26,7 +26,7 @@ class FFDataset(data.Dataset):
             split_root = os.path.join(root, split)
             img_list = os.listdir(split_root)
             random.shuffle(img_list)
-            img_list = img_list if len(img_list) < self.frame_num else img_list[:300]
+            img_list = img_list if len(img_list) < self.frame_num else img_list[:self.frame_num]
             for img in img_list:
                 img_path = os.path.join(split_root, img)
                 image_path_list.append(img_path)
