@@ -79,10 +79,10 @@ if __name__ == '__main__':
                 print(f'loss: {loss} at step: {model.total_steps}')
 
             if i % int(len_dataloader / 10) == 0:
-                model.eval()
+                model.model.eval()
                 auc, r_acc, f_acc = evaluate(model, data_path, mode='valid')
                 print(f'(Val @ epoch {epoch}) auc: {auc}, r_acc: {r_acc}, f_acc:{f_acc}')
-                model.train()
+                model.model.train()
         epoch = epoch + 1
 
     auc, r_acc, f_acc = evaluate(model, data_path, mode='test')
