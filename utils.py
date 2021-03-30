@@ -94,7 +94,7 @@ def evaluate(model, data_path, mode='valid'):
                 else:
                     label = torch.ones(img.size(0))
                 img = img.detach().cuda()
-                output = model(img)
+                output = model.forward(img)
                 y_pred.extend(output.sigmoid().flatten().tolist())
                 y_true.extend(label.flatten().tolist())
 
