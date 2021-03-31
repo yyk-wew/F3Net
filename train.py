@@ -18,11 +18,11 @@ batch_size = 12
 gpu_ids = [*range(osenvs)]
 max_epoch = 5
 loss_freq = 40
-mode = 'FAD' # ['FAD', 'LFS', 'Both', 'Mix']
+mode = 'FAD' # ['Original', 'FAD', 'LFS', 'Both', 'Mix']
 
 
 if __name__ == '__main__':
-    dataset = FFDataset(dataset_root=os.path.join(dataset_path, 'train', 'real'), size=299, frame_num=300)
+    dataset = FFDataset(dataset_root=os.path.join(dataset_path, 'train', 'real'), size=299, frame_num=300, augment=True)
     dataloader_real = torch.utils.data.DataLoader(
         dataset=dataset,
         batch_size=batch_size // 2,
@@ -31,7 +31,7 @@ if __name__ == '__main__':
     
     len_dataloader = dataloader_real.__len__()
 
-    dataset_img, total_len =  get_dataset(name='train', size=299, root=dataset_path, frame_num=300)
+    dataset_img, total_len =  get_dataset(name='train', size=299, root=dataset_path, frame_num=300, augment=True)
     dataloader_fake = torch.utils.data.DataLoader(
         dataset=dataset_img,
         batch_size=batch_size // 2,

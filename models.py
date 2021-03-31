@@ -7,7 +7,6 @@ import numpy as np
 import types
 
 # FAD Module
-
 class FAD_Head(nn.Module):
     def __init__(self, size):
         super(FAD_Head, self).__init__()
@@ -26,8 +25,10 @@ class FAD_Head(nn.Module):
 
         # define learnable filter
         # low - middle - high - all
-        self.F_w_filters = nn.ParameterList([nn.Parameter(torch.randn(size, size).cuda()) for i in range(4)])
+        self.F_w_filters = nn.ParameterList([nn.Parameter(torch.randn(size, size), requires_grad=True) for i in range(4)])
         # init learnable filter(if needed)
+        for f in self.F_w_filters:
+            f.data.zero_()
 
     def forward(self, x):
         # 4 kernel
@@ -41,6 +42,54 @@ class FAD_Head(nn.Module):
         out = torch.cat(y_list, dim=1)    # [N, 12, 299, 299]
         return out
 
+# LFS Module
+class LFS_Head(nn.Module):
+    def __init__(self, size, window_size, M):
+        super(LFS_Head, self).__init__()
+
+        self.window_size = window_size
+        self._M = M
+
+        # init DCT matrix
+        self._DCT_patch = nn.Parameter(torch.tensor(DCT_mat(window_size)).float(), requires_grad=False)
+        self._DCT_patch_T = nn.Parameter(torch.transpose(torch.tensor(DCT_mat(window_size)).float(), 0, 1), requires_grad=False)
+
+        self.unfold = nn.Unfold(kernel_size=(window_size, window_size), stride=2, padding=4)
+
+        # init base filter
+        self.L_base_filters = nn.ParameterList([nn.Parameter(torch.tensor(generate_filter(window_size / M * i, window_size / M * (i+1), window_size)), requires_grad=False) for i in range(M)])
+
+        # init learnable filter
+        self.L_w_filters = nn.ParameterList([nn.Parameter(torch.randn(window_size, window_size), requires_grad=True) for i in range(M)])
+        for l in self.L_w_filters:
+            l.data.zero_()
+    
+    def forward(self, x):
+        # calculate size
+        N, C, W, H = x.size()
+        S = self.window_size
+        size_after = int((W - S + 8)/2) + 1
+        assert size_after == 149
+
+        # sliding window unfold and DCT
+        x_unfold = self.unfold(x)   # [N, C * S * S, L]   L:block num
+        L = x_unfold.size()[2]
+        x_unfold = x_unfold.transpose(1, 2).reshape(N, L, C, S, S)  # [N, L, C, S, S]
+        x_dct = self._DCT_patch @ x_unfold @ self._DCT_patch_T
+
+        # M kernels filtering
+        y_list = []
+        for i in range(self._M):
+            final_filter = self.L_base_filters[i] + norm_sigma(self.L_w_filters[i])     # [S,S]
+            y = x_dct * final_filter    # [N, L, C, S, S]
+            y = torch.abs(y)
+            y = torch.sum(y, dim=[2,3,4])   # [N, L]
+            y = torch.log10(y)
+            y = y.reshape(N, size_after, size_after).unsqueeze(dim=1)   # [N, 1, 149, 149]
+            y_list.append(y)
+        out = torch.cat(y_list, dim=1)  # [N, M, 149, 149]
+        return out
+
 
 class F3Net(nn.Module):
     def __init__(self, num_classes=1, img_width=299, img_height=299, LFS_window_size=10, LFS_stride=2, LFS_M = 6, mode='FAD', device=None):
@@ -52,11 +101,17 @@ class F3Net(nn.Module):
         self.window_size = LFS_window_size
         self._LFS_M = LFS_M
 
+        # init branches
         if mode == 'FAD':
             self.FAD_head = FAD_Head(img_size)
-        
-        # init baseline
-        self.init_xcep_FAD()
+            self.init_xcep_FAD()
+
+        if mode == 'LFS':
+            self.LFS_head = LFS_Head(img_size, LFS_window_size, LFS_M)
+            self.init_xcep_LFS()
+
+        if mode == 'Original':
+            self.init_xcep()
 
         # classifier
         self.relu = nn.ReLU(inplace=True)
@@ -78,12 +133,47 @@ class F3Net(nn.Module):
         for i in range(4):
             self.FAD_xcep.conv1.weight.data[:, i*3:(i+1)*3, :, :] = conv1_data / 4.0
 
-    def forward(self, x):
-        fea_FAD = self.FAD_head(x)
-        fea_FAD = self.FAD_xcep.features(fea_FAD)
-        fea_FAD = self._norm_fea(fea_FAD)
+    def init_xcep_LFS(self):
+        self.LFS_xcep = Xception(self.num_classes)
+        
+        # To get a good performance, using ImageNet-pretrained Xception model is recommended
+        state_dict = get_xcep_state_dict()
+        conv1_data = state_dict['conv1.weight'].data
 
-        y = fea_FAD
+        self.LFS_xcep.load_state_dict(state_dict, False)
+
+        # copy on conv1
+        # let new conv1 use old param to balance the network
+        self.LFS_xcep.conv1 = nn.Conv2d(self._LFS_M, 32, 3, 1, 0, bias=False)
+        for i in range(int(self._LFS_M / 3)):
+            self.LFS_xcep.conv1.weight.data[:, i*3:(i+1)*3, :, :] = conv1_data / float(self._LFS_M / 3.0)
+
+    def init_xcep(self):
+        self.xcep = Xception(self.num_classes)
+
+        # To get a good performance, using ImageNet-pretrained Xception model is recommended
+        state_dict = get_xcep_state_dict()
+        self.xcep.load_state_dict(state_dict, False)
+
+
+    def forward(self, x):
+        if self.mode == 'FAD':
+            fea_FAD = self.FAD_head(x)
+            fea_FAD = self.FAD_xcep.features(fea_FAD)
+            fea_FAD = self._norm_fea(fea_FAD)
+            y = fea_FAD
+
+        if self.mode == 'LFS':
+            fea_LFS = self.LFS_head(x)
+            fea_LFS = self.LFS_xcep.features(fea_LFS)
+            fea_LFS = self._norm_fea(fea_LFS)
+            y = fea_LFS
+
+        if self.mode == 'Original':
+            fea = self.xcep.features(x)
+            fea = self._norm_fea(fea)
+            y = fea
+
         f = self.dp(y)
         f = self.fc(f)
         return y,f
