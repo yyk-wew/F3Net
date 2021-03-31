@@ -16,7 +16,7 @@ dataset_path = '/data/yike/FF++_std_c40_300frames/'
 pretrained_path = 'pretrained/xception-b5690688.pth'
 batch_size = 12
 gpu_ids = [*range(osenvs)]
-max_epoch = 2
+max_epoch = 5
 loss_freq = 40
 mode = 'FAD' # ['FAD', 'LFS', 'Both', 'Mix']
 
@@ -82,6 +82,8 @@ if __name__ == '__main__':
                 model.model.eval()
                 auc, r_acc, f_acc = evaluate(model, dataset_path, mode='valid')
                 print(f'(Val @ epoch {epoch}) auc: {auc}, r_acc: {r_acc}, f_acc:{f_acc}')
+                auc, r_acc, f_acc = evaluate(model, dataset_path, mode='test')
+                print(f'(Test @ epoch {epoch}) auc: {auc}, r_acc: {r_acc}, f_acc:{f_acc}')
                 model.model.train()
         epoch = epoch + 1
 
