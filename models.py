@@ -6,6 +6,97 @@ import torch.nn.init as init
 import numpy as np
 import types
 
+# FAD Module
+
+class FAD_Head(nn.Module):
+    def __init__(self, size):
+        super(FAD_Head, self).__init__()
+
+        # init DCT matrix
+        self._DCT_all = nn.Parameter(torch.tensor(DCT_mat(size)).float(), requires_grad=False)
+        self._DCT_all_T = nn.Parameter(torch.transpose(torch.tensor(DCT_mat(size)).float(), 0, 1), requires_grad=False)
+
+        # define base filters
+        # 0 - 1/16 || 1/16 - 1/8 || 1/8 - 1
+        f_base_low = nn.Parameter(torch.tensor(generate_filter(0, size // 16, size)), requires_grad=False)
+        f_base_middle = nn.Parameter(torch.tensor(generate_filter(size // 16, size // 8, size)), requires_grad=False)
+        f_base_high = nn.Parameter(torch.tensor(generate_filter(size // 8, size, size)), requires_grad=False)
+        f_base_all = nn.Parameter(torch.tensor(generate_filter(0, size * 2, size)), requires_grad=False)
+        self.F_base_filters = nn.ParameterList([f_base_low, f_base_middle, f_base_high, f_base_all])
+
+        # define learnable filter
+        # low - middle - high - all
+        self.F_w_filters = nn.ParameterList([nn.Parameter(torch.randn(size, size).cuda()) for i in range(4)])
+        # init learnable filter(if needed)
+
+    def forward(self, x):
+        # 4 kernel
+        y_list = []
+        for i in range(4):
+            final_filter = self.F_base_filters[i] + norm_sigma(self.F_w_filters[i]) # [299, 299]
+            x_freq = self._DCT_all @ x @ self._DCT_all_T    # [N, 3, 299, 299]
+            x_pass = x_freq * final_filter  # [N, 3, 299, 299]
+            y = self._DCT_all_T @ x_pass @ self._DCT_all    # [N, 3, 299, 299]
+            y_list.append(y)
+        out = torch.cat(y_list, dim=1)    # [N, 12, 299, 299]
+        return out
+
+
+class F3Net(nn.Module):
+    def __init__(self, num_classes=1, img_width=299, img_height=299, LFS_window_size=10, LFS_stride=2, LFS_M = 6, mode='FAD', device=None):
+        super(F3Net, self).__init__()
+        assert img_width == img_height
+        img_size = img_width
+        self.num_classes = num_classes
+        self.mode = mode
+        self.window_size = LFS_window_size
+        self._LFS_M = LFS_M
+
+        if mode == 'FAD':
+            self.FAD_head = FAD_Head(img_size)
+        
+        # init baseline
+        self.init_xcep_FAD()
+
+        # classifier
+        self.relu = nn.ReLU(inplace=True)
+        self.fc = nn.Linear(4096 if self.mode == 'Both' or self.mode == 'Mix' else 2048, num_classes)
+        self.dp = nn.Dropout(p=0.2)
+
+    def init_xcep_FAD(self):
+        self.FAD_xcep = Xception(self.num_classes)
+        
+        # To get a good performance, using ImageNet-pretrained Xception model is recommended
+        state_dict = get_xcep_state_dict()
+        conv1_data = state_dict['conv1.weight'].data
+
+        self.FAD_xcep.load_state_dict(state_dict, False)
+
+        # copy on conv1
+        # let new conv1 use old param to balance the network
+        self.FAD_xcep.conv1 = nn.Conv2d(12, 32, 3, 2, 0, bias=False)
+        for i in range(4):
+            self.FAD_xcep.conv1.weight.data[:, i*3:(i+1)*3, :, :] = conv1_data / 4.0
+
+    def forward(self, x):
+        fea_FAD = self.FAD_head(x)
+        fea_FAD = self.FAD_xcep.features(fea_FAD)
+        fea_FAD = self._norm_fea(fea_FAD)
+
+        y = fea_FAD
+        f = self.dp(y)
+        f = self.fc(f)
+        return y,f
+
+    def _norm_fea(self, fea):
+        f = self.relu(fea)
+        f = F.adaptive_avg_pool2d(f, (1,1))
+        f = f.view(f.size(0), -1)
+        return f
+
+
+
+'''
 class F3Net(nn.Module):
     def __init__(self, num_classes=1, img_width=299, img_height=299, LFS_window_size=10, LFS_stride=2, LFS_M = 6, mode='FAD', device=None):
         super(F3Net, self).__init__()
@@ -45,8 +136,10 @@ class F3Net(nn.Module):
 
         # init base filter
         # 0 - 1/16 || 1/16 - 1/8 || 1/8 - 1
-        base_low = [[0. if i + j > size // 16 else 1. for j in range(size)] for i in range(size)]
-        f_base_low = torch.tensor(base_low, requires_grad=False).cuda()
+        f_base_low = torch.tensor(generate_filter(0, size // 16), requires_grad=False).cuda()
+        f_base_low = torch.tensor(generate_filter(size // 16, size // 8), requires_grad=False).cuda()
+        f_base_low = torch.tensor(generate_filter(size // 8, size), requires_grad=False).cuda()
+        
         base_middle = [[0. if i + j > size // 8 or i + j <= size // 16 else 1. for j in range(size)] for i in range(size)]
         f_base_middle = torch.tensor(base_middle, requires_grad=False).cuda()
         base_high = [[0. if i + j <= size // 8 else 1. for j in range(size)] for i in range(size)]
@@ -247,12 +340,27 @@ class F3Net(nn.Module):
     def _norm_sigma_new(self, x):
         res = torch.where(x >= 0, (1. - torch.exp(-x)) / (1. + torch.exp(-x)), (torch.exp(x) - 1) / (1. + torch.exp(x)))
         return res
-
+'''
 
 # utils
 def DCT_mat(size):
     m = [[ (np.sqrt(1./size) if i == 0 else np.sqrt(2./size)) * np.cos((j + 0.5) * np.pi * i / size) for j in range(size)] for i in range(size)]
     return m
+
+def generate_filter(start, end, size):
+    return [[0. if i + j > end or i + j <= start else 1. for j in range(size)] for i in range(size)]
+
+def norm_sigma(x):
+    return 2. * torch.sigmoid(x) - 1.
+
+def get_xcep_state_dict(pretrained_path='pretrained/xception-b5690688.pth'):
+    # load Xception
+    state_dict = torch.load(pretrained_path)
+    for name, weights in state_dict.items():
+        if 'pointwise' in name:
+            state_dict[name] = weights.unsqueeze(-1).unsqueeze(-1)
+    state_dict = {k:v for k, v in state_dict.items() if 'fc' not in k}
+    return state_dict
     
 
 # overwrite method for xception in LFS branch
