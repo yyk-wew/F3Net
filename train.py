@@ -72,6 +72,9 @@ if __name__ == '__main__':
             data = torch.cat([data_real,data_fake],dim=0)
             label = torch.cat([torch.zeros(bz).unsqueeze(dim=0),torch.ones(bz).unsqueeze(dim=0)],dim=1).squeeze(dim=0)
 
+            data = data.detach()
+            label = label.detach()
+
             model.set_input(data,label)
             loss = model.optimize_weight()
 

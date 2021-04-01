@@ -16,7 +16,8 @@ class FFDataset(data.Dataset):
         self.frame_num = frame_num
         self.train_list = self.collect_image(self.data_root)
         if augment:
-            self.transform = trans.Compose([trans.ToTensor(), trans.RandomHorizontalFlip(p=0.5)])
+            self.transform = trans.Compose([trans.RandomHorizontalFlip(p=0.5), trans.ToTensor()])
+            print("Augment True!")
         else:
             self.transform = trans.ToTensor()
         self.max_val = 1.

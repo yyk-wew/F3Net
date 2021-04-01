@@ -28,7 +28,7 @@ class FAD_Head(nn.Module):
         self.F_w_filters = nn.ParameterList([nn.Parameter(torch.randn(size, size), requires_grad=True) for i in range(4)])
         # init learnable filter(if needed)
         for f in self.F_w_filters:
-            f.data.zero_()
+            f.data.normal(0., 0.1)
 
     def forward(self, x):
         # 4 kernel
@@ -62,9 +62,13 @@ class LFS_Head(nn.Module):
         # init learnable filter
         self.L_w_filters = nn.ParameterList([nn.Parameter(torch.randn(window_size, window_size), requires_grad=True) for i in range(M)])
         for l in self.L_w_filters:
-            l.data.zero_()
+            l.data.normal_(0., 0.1)
     
     def forward(self, x):
+        # turn RGB into Gray
+        x_gray = 0.299*x[:,0,:,:] + 0.587*x[:,1,:,:] + 0.114*x[:,2,:,:]
+        x = x_gray.unsqueeze(1)
+
         # calculate size
         N, C, W, H = x.size()
         S = self.window_size
