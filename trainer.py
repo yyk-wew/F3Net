@@ -42,3 +42,10 @@ class Trainer():
         self.loss.backward()
         self.optimizer.step()
         return self.loss
+
+    def save(self, path):
+        torch.save(self.model.state_dict(), path)
+
+    def load(self, path):
+        state_dict = torch.load(path)
+        self.model.load_state_dict(state_dict)
