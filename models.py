@@ -6,6 +6,25 @@ import torch.nn.init as init
 import numpy as np
 import types
 
+# Filter Module
+class Filter(nn.Module):
+    def __init__(self, size, band_start, band_end, use_learnable=True):
+        super(Filter, self).__init__()
+        self.use_learnable = use_learnable
+
+        self.base = nn.Parameter(torch.tensor(generate_filter(band_start, band_end, size)), requires_grad=False)
+        if self.use_learnable:
+            self.learnable = nn.Parameter(torch.randn(size, size), requires_grad=True)
+            self.learnable.data.normal_(0., 0.1)
+
+    def forward(self, x):
+        if self.use_learnable:
+            filt = self.base + norm_sigma(self.learnable)
+        else:
+            filt = self.base
+        return x * filt
+
+
 # FAD Module
 class FAD_Head(nn.Module):
     def __init__(self, size):
@@ -15,28 +34,23 @@ class FAD_Head(nn.Module):
         self._DCT_all = nn.Parameter(torch.tensor(DCT_mat(size)).float(), requires_grad=False)
         self._DCT_all_T = nn.Parameter(torch.transpose(torch.tensor(DCT_mat(size)).float(), 0, 1), requires_grad=False)
 
-        # define base filters
+        # define base filters and learnable
         # 0 - 1/16 || 1/16 - 1/8 || 1/8 - 1
-        f_base_low = nn.Parameter(torch.tensor(generate_filter(0, size // 16, size)), requires_grad=False)
-        f_base_middle = nn.Parameter(torch.tensor(generate_filter(size // 16, size // 8, size)), requires_grad=False)
-        f_base_high = nn.Parameter(torch.tensor(generate_filter(size // 8, size, size)), requires_grad=False)
-        f_base_all = nn.Parameter(torch.tensor(generate_filter(0, size * 2, size)), requires_grad=False)
-        self.F_base_filters = nn.ParameterList([f_base_low, f_base_middle, f_base_high, f_base_all])
+        low_filter = Filter(size, 0, size // 16)
+        middle_filter = Filter(size, size // 16, size // 8)
+        high_filter = Filter(size, size // 8, size)
+        all_filter = Filter(size, 0, size * 2)
 
-        # define learnable filter
-        # low - middle - high - all
-        self.F_w_filters = nn.ParameterList([nn.Parameter(torch.randn(size, size), requires_grad=True) for i in range(4)])
-        # init learnable filter(if needed)
-        for f in self.F_w_filters:
-            f.data.normal(0., 0.1)
+        self.filters = nn.ModuleList([low_filter, middle_filter, high_filter, all_filter])
 
     def forward(self, x):
+        # DCT
+        x_freq = self._DCT_all @ x @ self._DCT_all_T    # [N, 3, 299, 299]
+
         # 4 kernel
         y_list = []
         for i in range(4):
-            final_filter = self.F_base_filters[i] + norm_sigma(self.F_w_filters[i]) # [299, 299]
-            x_freq = self._DCT_all @ x @ self._DCT_all_T    # [N, 3, 299, 299]
-            x_pass = x_freq * final_filter  # [N, 3, 299, 299]
+            x_pass = self.filters[i](x_freq)  # [N, 3, 299, 299]
             y = self._DCT_all_T @ x_pass @ self._DCT_all    # [N, 3, 299, 299]
             y_list.append(y)
         out = torch.cat(y_list, dim=1)    # [N, 12, 299, 299]
@@ -56,18 +70,15 @@ class LFS_Head(nn.Module):
 
         self.unfold = nn.Unfold(kernel_size=(window_size, window_size), stride=2, padding=4)
 
-        # init base filter
-        self.L_base_filters = nn.ParameterList([nn.Parameter(torch.tensor(generate_filter(window_size / M * i, window_size / M * (i+1), window_size)), requires_grad=False) for i in range(M)])
-
-        # init learnable filter
-        self.L_w_filters = nn.ParameterList([nn.Parameter(torch.randn(window_size, window_size), requires_grad=True) for i in range(M)])
-        for l in self.L_w_filters:
-            l.data.normal_(0., 0.1)
+        # init filters
+        self.filters = nn.ModuleList([Filter(window_size, window_size / M * i, window_size / M * (i+1)) for i in range(M)])
     
     def forward(self, x):
         # turn RGB into Gray
         x_gray = 0.299*x[:,0,:,:] + 0.587*x[:,1,:,:] + 0.114*x[:,2,:,:]
         x = x_gray.unsqueeze(1)
+
+        # rescale to 0 - 255
 
         # calculate size
         N, C, W, H = x.size()
@@ -84,8 +95,7 @@ class LFS_Head(nn.Module):
         # M kernels filtering
         y_list = []
         for i in range(self._M):
-            final_filter = self.L_base_filters[i] + norm_sigma(self.L_w_filters[i])     # [S,S]
-            y = x_dct * final_filter    # [N, L, C, S, S]
+            y = self.filters[i](x_dct)    # [N, L, C, S, S]
             y = torch.abs(y)
             y = torch.sum(y, dim=[2,3,4])   # [N, L]
             y = torch.log10(y)
