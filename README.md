@@ -4,7 +4,21 @@
 
 This is a personal implementation of F3-Net , so there are lots of difference compared to the official version. To learn more details about F3-Net, please check the [paper](https://arxiv.org/abs/2007.09355) here.
 
-Actually, I failed to reproduce the results of the paper for now. So all kinds of advices to improve model performance are welcomed and I'd like to discuss with you.
+
+
+## Result
+
+Model is tested on FaceForensics++ LQ data and reports AUC. 
+
+| Model    | Paper | Valid(Mine) | Test(Mine) |
+| -------- | ----- | ----------- | ---------- |
+| Baseline | 89.3  | 92.0        | 89.6       |
+| FAD      | 90.7  | 91.3        | 89.5       |
+| LFS      | 88.9  | 87.5        | 84.7       |
+| Both     | 92.8  | 91.0        | 88.6       |
+| Mix      | 93.3  | \           | \          |
+
+Obviously, there's something wrong with the implementation of LFS branch and I'm working on it now.
 
 
 
@@ -94,12 +108,6 @@ Environment:
 **To train the model**
 
 `python train.py`
-
-
-
-## Architecture Details
-
-I've written a doc about implementation details and my confusion during coding. Check `details.md` if you're interested. [Still working on it]
 
 
 
