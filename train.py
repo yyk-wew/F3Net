@@ -6,7 +6,7 @@ import time
 import torch
 import torch.nn
 
-from utils import evaluate, get_dataset, FFDataset
+from utils import evaluate, get_dataset, FFDataset, setup_logger
 from trainer import Trainer
 import numpy as np
 import random
