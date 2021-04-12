@@ -8,7 +8,7 @@ import types
 
 # Filter Module
 class Filter(nn.Module):
-    def __init__(self, size, band_start, band_end, use_learnable=True):
+    def __init__(self, size, band_start, band_end, use_learnable=True, norm=False):
         super(Filter, self).__init__()
         self.use_learnable = use_learnable
 
@@ -16,13 +16,25 @@ class Filter(nn.Module):
         if self.use_learnable:
             self.learnable = nn.Parameter(torch.randn(size, size), requires_grad=True)
             self.learnable.data.normal_(0., 0.1)
+            # Todo
+            # self.learnable = nn.Parameter(torch.rand((size, size)) * 0.2 - 0.1, requires_grad=True)
+
+        self.norm = norm
+        if norm:
+            self.ft_num = nn.Parameter(torch.sum(torch.tensor(generate_filter(band_start, band_end, size))), requires_grad=False)
+
 
     def forward(self, x):
         if self.use_learnable:
             filt = self.base + norm_sigma(self.learnable)
         else:
             filt = self.base
-        return x * filt
+
+        if self.norm:
+            y = x * filt / self.ft_num
+        else:
+            y = x * filt
+        return y
 
 
 # FAD Module
@@ -71,7 +83,7 @@ class LFS_Head(nn.Module):
         self.unfold = nn.Unfold(kernel_size=(window_size, window_size), stride=2, padding=4)
 
         # init filters
-        self.filters = nn.ModuleList([Filter(window_size, window_size / M * i, window_size / M * (i+1)) for i in range(M)])
+        self.filters = nn.ModuleList([Filter(window_size, window_size * 2. / M * i, window_size * 2. / M * (i+1), norm=True) for i in range(M)])
     
     def forward(self, x):
         # turn RGB into Gray
@@ -96,10 +108,14 @@ class LFS_Head(nn.Module):
         # M kernels filtering
         y_list = []
         for i in range(self._M):
-            y = self.filters[i](x_dct)    # [N, L, C, S, S]
-            y = torch.abs(y)
-            y = torch.sum(y, dim=[2,3,4])   # [N, L]
+            # y = self.filters[i](x_dct)    # [N, L, C, S, S]
+            # y = torch.abs(y)
+            # y = torch.sum(y, dim=[2,3,4])   # [N, L]
+            # y = torch.log10(y + 1e-15)
+            y = torch.abs(x_dct)
             y = torch.log10(y + 1e-15)
+            y = self.filters[i](y)
+            y = torch.sum(y, dim=[2,3,4])
             y = y.reshape(N, size_after, size_after).unsqueeze(dim=1)   # [N, 1, 149, 149]
             y_list.append(y)
         out = torch.cat(y_list, dim=1)  # [N, M, 149, 149]
