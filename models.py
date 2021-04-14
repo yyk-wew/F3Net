@@ -314,21 +314,43 @@ def fea_8_12(self, x):
     return x
 
 class MixBlock(nn.Module):
-    def __init__(self, c_in):
+    def __init__(self, c_in, width, height):
         super(MixBlock, self).__init__()
-        c_in = c_in * 2
-        self.conv1 = nn.Conv2d(c_in, c_in, (1,1))
-        self.conv2 = nn.Conv2d(c_in, 2, (3,3), 1, 1)
-        self.bn = nn.BatchNorm2d(c_in)
-        self.relu = nn.ReLU()
-        self.sigmoid = nn.Sigmoid()
+        self.FAD_query = nn.Conv2d(c_in, c_in, (1,1))
+        self.LFS_query = nn.Conv2d(c_in, c_in, (1,1))
 
-    def forward(self, x1, x2):
-        x = torch.cat([x1, x2], dim=1)
-        x = self.conv1(x)
-        x = self.bn(x)
-        x = self.relu(x)
-        x = self.conv2(x)
-        x = self.sigmoid(x)
-        y1, y2 = torch.split(x, 1, dim=1)
-        return y1, y2
+        self.FAD_key = nn.Conv2d(c_in, c_in, (1,1))
+        self.LFS_key = nn.Conv2d(c_in, c_in, (1,1))
+
+        self.softmax = nn.Softmax(dim=-1)
+        self.relu = nn.ReLU()
+
+        self.FAD_gamma = nn.Parameter(torch.zeros(1))
+        self.LFS_gamma = nn.Parameter(torch.zeros(1))
+
+        self.FAD_conv = nn.Conv2d(c_in, c_in, (1,1), groups=c_in)
+        self.FAD_bn = nn.BatchNorm2d(c_in)
+        self.LFS_conv = nn.Conv2d(c_in, c_in, (1,1), groups=c_in)
+        self.LFS_bn = nn.BatchNorm2d(c_in)
+
+    def forward(self, x_FAD, x_LFS):
+        B, C, W, H = x_FAD.size()
+        assert W == H
+
+        q_FAD = self.FAD_query(x_FAD).view(-1, W, H)    # [BC, W, H]
+        q_LFS = self.LFS_query(x_LFS).view(-1, W, H)
+        M_query = torch.cat([q_FAD, q_LFS], dim=2)  # [BC, W, 2H]
+
+        k_FAD = self.FAD_key(x_FAD).view(-1, W, H).transpose(1, 2)  # [BC, H, W]
+        k_LFS = self.LFS_key(x_LFS).view(-1, W, H).transpose(1, 2)
+        M_key = torch.cat([k_FAD, k_LFS], dim=1)    # [BC, 2H, W]
+
+        energy = torch.bmm(M_query, M_key)  #[BC, W, W]
+        attention = self.softmax(energy).view(B, C, W, W)
+
+        att_LFS = x_LFS * attention * (torch.sigmoid(self.LFS_gamma) * 2.0 - 1.0)
+        y_FAD = x_FAD + self.FAD_bn(self.FAD_conv(att_LFS))
+
+        att_FAD = x_FAD * attention * (torch.sigmoid(self.FAD_gamma) * 2.0 - 1.0)
+        y_LFS = x_LFS + self.LFS_bn(self.LFS_conv(att_FAD))
+        return y_FAD, y_LFS
