@@ -90,14 +90,18 @@ After preprocessing, the data should be organized as following:
 
 There are four modes supported in F3-Net​.
 
-| Mode(string) |                                                         |
-| ------------ | ------------------------------------------------------- |
-| 'FAD'        | Use FAD branch only.                                    |
-| 'LFS'        | Use LFS branch only.                                    |
-| 'Both'       | Use both of branches and concate before classification. |
-| 'Mix'        | Use both of branches and MixBlock.                      |
+| Mode(string)       |                                                         |
+| ------------------ | ------------------------------------------------------- |
+| 'FAD'              | Use FAD branch only.                                    |
+| 'LFS'              | Use LFS branch only.                                    |
+| 'Both'             | Use both of branches and concate before classification. |
+| 'Mix'(unavailable) | Use both of branches and MixBlock.                      |
 
- 
+ **Note**:
+
+Mode 'Mix' is unavailable yet. If you're interested in this part, check 'class Mixblock' in models.py. 
+
+
 
 #### Run
 

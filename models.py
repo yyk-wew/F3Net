@@ -314,6 +314,8 @@ def fea_8_12(self, x):
     return x
 
 class MixBlock(nn.Module):
+    # An implementation of the cross attention module in F3-Net
+    # Haven't added into the whole network yet
     def __init__(self, c_in, width, height):
         super(MixBlock, self).__init__()
         self.FAD_query = nn.Conv2d(c_in, c_in, (1,1))

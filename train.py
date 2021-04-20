@@ -104,5 +104,6 @@ if __name__ == '__main__':
                 model.model.train()
         epoch = epoch + 1
 
+    model.model.eval()
     auc, r_acc, f_acc = evaluate(model, dataset_path, mode='test')
     logger.debug(f'(Test @ epoch {epoch}) auc: {auc}, r_acc: {r_acc}, f_acc:{f_acc}')
