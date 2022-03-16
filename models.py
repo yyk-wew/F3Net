@@ -48,9 +48,9 @@ class FAD_Head(nn.Module):
 
         # define base filters and learnable
         # 0 - 1/16 || 1/16 - 1/8 || 1/8 - 1
-        low_filter = Filter(size, 0, size // 16)
-        middle_filter = Filter(size, size // 16, size // 8)
-        high_filter = Filter(size, size // 8, size)
+        low_filter = Filter(size, 0, size // 2.82)
+        middle_filter = Filter(size, size // 2.82, size // 2)
+        high_filter = Filter(size, size // 2, size * 2)
         all_filter = Filter(size, 0, size * 2)
 
         self.filters = nn.ModuleList([low_filter, middle_filter, high_filter, all_filter])
@@ -230,7 +230,7 @@ def DCT_mat(size):
     return m
 
 def generate_filter(start, end, size):
-    return [[0. if i + j > end or i + j <= start else 1. for j in range(size)] for i in range(size)]
+    return [[0. if i + j > end or i + j < start else 1. for j in range(size)] for i in range(size)]
 
 def norm_sigma(x):
     return 2. * torch.sigmoid(x) - 1.
